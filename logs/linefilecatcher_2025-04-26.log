@@ -1,0 +1,11 @@
+INFO: 2025/04/26 20:54:05 logger.go:57: Starting LineFileCatcher service
+INFO: 2025/04/26 20:54:05 logger.go:57: Channel Secret: tes***
+INFO: 2025/04/26 20:54:05 logger.go:57: Storage Directory: ./storage
+INFO: 2025/04/26 20:54:05 logger.go:57: Debug Mode: false
+INFO: 2025/04/26 20:54:05 logger.go:57: Initializing LINE API client
+INFO: 2025/04/26 20:54:05 logger.go:57: Initializing media store
+INFO: 2025/04/26 20:54:05 logger.go:57: Starting server on :8080
+INFO: 2025/04/26 20:54:27 logger.go:57: Shutting down, waiting for pending downloads to complete...
+INFO: 2025/04/26 20:54:27 logger.go:57: Waiting for pending downloads to complete...
+INFO: 2025/04/26 20:54:27 logger.go:57: All downloads completed
+INFO: 2025/04/26 20:54:27 logger.go:57: Server shutdown complete
