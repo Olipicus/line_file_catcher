@@ -3,65 +3,70 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"runtime"
 	"time"
 
 	"code.olipicus.com/line_file_catcher/internal/media"
 	"code.olipicus.com/line_file_catcher/internal/utils"
 )
 
-// StatsHandler handles statistics requests
-type StatsHandler struct {
-	logger     *utils.Logger
-	mediaStore *media.MediaStore
+// StatsResponse represents the response for the stats endpoint
+type StatsResponse struct {
+	Status        string                 `json:"status"`
+	Uptime        string                 `json:"uptime"`
+	FileStats     media.Stats            `json:"fileStats"`
+	CloudStats    map[string]interface{} `json:"cloudStats"`
+	MemoryStats   map[string]interface{} `json:"memoryStats"`
+	ProcessUptime string                 `json:"processUptime"`
 }
 
-// StatsResponse represents the statistics response
-type StatsResponse struct {
-	MediaStats    media.Stats `json:"mediaStats"`
-	ProcessedRate float64     `json:"processedPerMinute"` // Files processed per minute
-	StorageRate   float64     `json:"storageBytesPerMin"` // Bytes stored per minute
-	Timestamp     time.Time   `json:"timestamp"`
+// StatsHandler struct to handle stats requests
+type StatsHandler struct {
+	startTime  time.Time
+	logger     *utils.Logger
+	mediaStore *media.MediaStore
 }
 
 // NewStatsHandler creates a new stats handler
 func NewStatsHandler(logger *utils.Logger, mediaStore *media.MediaStore) *StatsHandler {
 	return &StatsHandler{
+		startTime:  time.Now(),
 		logger:     logger,
 		mediaStore: mediaStore,
 	}
 }
 
-// HandleStats processes statistics requests
+// HandleStats processes stats requests
 func (h *StatsHandler) HandleStats(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("Received stats request from %s", r.RemoteAddr)
 
-	// Get media stats
-	stats := h.mediaStore.GetStats()
+	// Get memory statistics
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
 
-	// Calculate processing rates
-	var processedRate float64
-	var storageRate float64
-
-	// Duration since start
-	uptime := time.Since(stats.StartTime)
-	uptimeMinutes := uptime.Minutes()
-
-	if uptimeMinutes > 0 {
-		totalProcessed := stats.ImageCount + stats.VideoCount + stats.AudioCount + stats.FileCount
-		processedRate = float64(totalProcessed) / uptimeMinutes
-		storageRate = float64(stats.TotalBytes) / uptimeMinutes
+	// Format memory stats for human readability
+	memoryStats := map[string]interface{}{
+		"allocatedMB":    float64(memStats.Alloc) / 1024 / 1024,
+		"totalAllocMB":   float64(memStats.TotalAlloc) / 1024 / 1024,
+		"systemMemoryMB": float64(memStats.Sys) / 1024 / 1024,
+		"numGC":          memStats.NumGC,
 	}
 
+	// Get cloud storage statistics
+	cloudStats := h.mediaStore.GetCloudStats()
+
+	// Create the response
 	response := StatsResponse{
-		MediaStats:    stats,
-		ProcessedRate: processedRate,
-		StorageRate:   storageRate,
-		Timestamp:     time.Now(),
+		Status:        "ok",
+		Uptime:        time.Since(h.startTime).String(),
+		FileStats:     h.mediaStore.GetStats(),
+		CloudStats:    cloudStats,
+		MemoryStats:   memoryStats,
+		ProcessUptime: time.Since(h.startTime).String(),
 	}
 
+	// Set content type and encode the response as JSON
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.logger.Error("Failed to encode stats response: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

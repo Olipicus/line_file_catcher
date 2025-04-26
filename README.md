@@ -188,6 +188,110 @@ Common issues:
 
 3. **Missing media files**: Verify that your LINE Bot has the necessary permissions to access message content
 
+## Google Drive Integration
+
+LineFileCatcher can automatically backup your media files to Google Drive. This feature is disabled by default and requires additional setup.
+
+### Prerequisites for Google Drive Integration
+
+- A Google account
+- A Google Cloud project with the Google Drive API enabled
+- OAuth 2.0 credentials for authentication
+
+### Setting Up Google Drive Integration
+
+#### 1. Create a Google Cloud Project
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Click "Create Project" or select an existing project
+3. Give your project a name and click "Create"
+
+#### 2. Enable the Google Drive API
+
+1. In your Google Cloud project, go to "APIs & Services" > "Library"
+2. Search for "Google Drive API" and select it
+3. Click "Enable"
+
+#### 3. Create OAuth 2.0 Credentials
+
+1. Go to "APIs & Services" > "Credentials"
+2. Click "Create Credentials" and select "OAuth client ID"
+3. If this is your first time, you'll need to configure the OAuth consent screen:
+   - Choose "External" or "Internal" depending on your use case
+   - Fill in the required information (app name, user support email, etc.)
+   - Add the necessary scopes (at minimum, `.../auth/drive.file`)
+   - Add test users if using External
+   - Save and continue
+4. For the OAuth client ID:
+   - Select "Desktop app" as the application type
+   - Give your client a name
+   - Click "Create"
+5. Download the JSON credentials file by clicking the download icon
+6. Move this file to `./bin/credentials.json` in your project directory (or update the path in your `.env` file)
+
+#### 4. Generate the Google Drive Access Token
+
+The project includes a utility to generate the necessary access token for Google Drive:
+
+1. Navigate to the utility directory:
+   ```bash
+   cd cli/gcp_gen_token
+   ```
+
+2. Run the token generation utility:
+   ```bash
+   go run main.go
+   ```
+   
+   If your credentials file is in a different location, you can edit the path in the utility or copy it to the expected location.
+
+3. The utility will output a URL. Copy and paste this URL in your browser.
+
+4. Sign in with your Google account and grant the requested permissions.
+
+5. After authentication, you'll receive an authorization code. Copy this code.
+
+6. Return to the terminal and paste the code when prompted.
+
+7. The utility will generate a `token.json` file and save it to the current directory.
+
+8. Move this token file to `./bin/token.json` (or update the path in your `.env` file).
+
+#### 5. Configure the Environment Variables
+
+Edit your `.env` file to enable Google Drive integration:
+
+```
+# Google Drive Integration
+DRIVE_ENABLED=true
+DRIVE_CREDENTIALS=./bin/credentials.json
+DRIVE_TOKEN_FILE=./bin/token.json
+DRIVE_FOLDER=LineFileCatcher
+DRIVE_RETRY_COUNT=3
+```
+
+### How It Works
+
+When enabled:
+
+1. Files saved locally will also be uploaded to Google Drive
+2. The same directory structure (organized by date) will be maintained in Google Drive
+3. Files are uploaded asynchronously to avoid slowing down the response times
+4. Failed uploads will be retried according to the configured retry count
+5. Detailed logs of upload success/failure are maintained
+
+### Troubleshooting Google Drive Integration
+
+Common issues:
+
+1. **Authentication errors**: Ensure your credentials.json and token.json files are valid and accessible to the application
+
+2. **Permission errors**: Check that your Google account has the necessary permissions and the correct scopes were requested
+
+3. **Expired tokens**: Token may expire after some time. If you experience authentication issues, regenerate the token using the included utility
+
+4. **Rate limiting**: Google Drive API has quotas. Check the logs for any rate limiting errors if you're processing many files
+
 ## Disclaimer
 
 This project was developed with assistance from GitHub Copilot, an AI-powered code generation tool. Please be aware of the following:

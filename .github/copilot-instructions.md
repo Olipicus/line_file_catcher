@@ -9,6 +9,12 @@
 - Include error handling for file I/O and network operations.
 - Provide comments for complex code sections to enhance readability.
 - Follow Go's standard formatting and naming conventions.
+- Implement Google Drive integration to backup received media files to the cloud.
+- Use Google Drive API with OAuth 2.0 authentication for secure cloud storage.
+- Add configurable options to enable/disable Google Drive backup.
+- Implement retry mechanisms for failed Google Drive uploads.
+- Create a folder structure in Google Drive that mirrors the local storage organization.
+- Include logging of successful and failed Google Drive operations.
 
 
 line_file_catcher/
@@ -20,6 +26,9 @@ line_file_catcher/
 │   ├── handler/              # HTTP handlers for webhook endpoints
 │   ├── lineapi/              # Interactions with LINE Messaging API
 │   ├── media/                # Media processing and storage logic
+│   ├── cloud/
+│   │   ├── drive/            # Google Drive integration components
+│   │   └── common/           # Common cloud storage interfaces and utilities
 │   └── utils/                # Utility functions
 ├── pkg/                      # Exportable packages (if any)
 ├── scripts/                  # Helper scripts (e.g., for setup or deployment)

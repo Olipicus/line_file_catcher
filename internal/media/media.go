@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"code.olipicus.com/line_file_catcher/internal/cloud/common"
+	"code.olipicus.com/line_file_catcher/internal/cloud/drive"
 	"code.olipicus.com/line_file_catcher/internal/config"
 	"code.olipicus.com/line_file_catcher/internal/utils"
 	"github.com/line/line-bot-sdk-go/v7/linebot"
@@ -29,19 +31,38 @@ type Stats struct {
 type MediaStore struct {
 	config     *config.Config
 	logger     *utils.Logger
+	cloudStore common.CloudStorage
 	downloadWg sync.WaitGroup
+	uploadWg   sync.WaitGroup
 	stats      Stats
 }
 
 // NewMediaStore creates a new MediaStore instance
 func NewMediaStore(cfg *config.Config, logger *utils.Logger) *MediaStore {
-	return &MediaStore{
+	ms := &MediaStore{
 		config: cfg,
 		logger: logger,
 		stats: Stats{
 			StartTime: time.Now(),
 		},
 	}
+
+	// Initialize cloud storage if enabled
+	if cfg.DriveEnabled {
+		driveService := drive.NewDriveService(cfg, logger)
+		err := driveService.Initialize()
+		if err != nil {
+			logger.Error("Failed to initialize Google Drive: %v", err)
+			logger.Warning("Google Drive backup will be disabled")
+		} else {
+			ms.cloudStore = driveService
+			logger.Info("Google Drive backup enabled")
+		}
+	} else {
+		logger.Info("Google Drive backup disabled")
+	}
+
+	return ms
 }
 
 // SaveMedia saves media content from a LINE MessageContentResponse
@@ -89,7 +110,37 @@ func (ms *MediaStore) SaveMedia(messageID, messageType string, content *linebot.
 
 	ms.logger.Info("Saved %s media file of %d bytes to %s", messageType, bytesWritten, filePath)
 
+	// Upload to cloud storage if enabled
+	ms.uploadToCloudAsync(filePath, dateStr)
+
 	return filePath, nil
+}
+
+// uploadToCloudAsync uploads a file to cloud storage asynchronously
+func (ms *MediaStore) uploadToCloudAsync(filePath, folderPath string) {
+	// Skip if cloud storage is not configured
+	if ms.cloudStore == nil {
+		return
+	}
+
+	ms.uploadWg.Add(1)
+	go func() {
+		defer ms.uploadWg.Done()
+
+		ms.logger.Debug("Starting cloud upload for %s to folder %s", filePath, folderPath)
+
+		// Build the remote folder path using the cloud provider's base folder and the date subfolder
+		remoteFolder := filepath.Join(ms.config.DriveFolder, folderPath)
+
+		// Upload the file
+		fileID, err := ms.cloudStore.UploadFile(filePath, remoteFolder)
+		if err != nil {
+			ms.logger.Error("Failed to upload file to cloud storage: %v", err)
+			return
+		}
+
+		ms.logger.Info("Successfully uploaded %s to cloud storage (ID: %s)", filePath, fileID)
+	}()
 }
 
 // updateStats updates the statistics counter safely
@@ -125,6 +176,20 @@ func (ms *MediaStore) GetStats() Stats {
 		TotalBytes: ms.stats.TotalBytes,
 		StartTime:  ms.stats.StartTime,
 	}
+}
+
+// GetCloudStats returns statistics about cloud storage if available
+func (ms *MediaStore) GetCloudStats() map[string]interface{} {
+	if ms.cloudStore == nil {
+		return map[string]interface{}{
+			"enabled": false,
+		}
+	}
+
+	stats := ms.cloudStore.GetBackupStats()
+	stats["enabled"] = true
+
+	return stats
 }
 
 // DownloadMedia downloads media from a URL and saves it to disk
@@ -195,6 +260,9 @@ func (ms *MediaStore) DownloadMedia(messageID, messageType string, contentURL st
 
 	ms.logger.Info("Saved %s media file of %d bytes to %s", messageType, bytesWritten, filePath)
 
+	// Upload to cloud storage if enabled
+	ms.uploadToCloudAsync(filePath, dateStr)
+
 	return filePath, nil
 }
 
@@ -222,4 +290,21 @@ func (ms *MediaStore) WaitForDownloads() {
 	ms.logger.Info("Waiting for pending downloads to complete...")
 	ms.downloadWg.Wait()
 	ms.logger.Info("All downloads completed")
+}
+
+// WaitForUploads waits for all cloud uploads to complete
+func (ms *MediaStore) WaitForUploads() {
+	if ms.cloudStore == nil {
+		return
+	}
+
+	ms.logger.Info("Waiting for pending cloud uploads to complete...")
+	ms.uploadWg.Wait()
+	ms.logger.Info("All cloud uploads completed")
+}
+
+// WaitForAll waits for all pending downloads and uploads to complete
+func (ms *MediaStore) WaitForAll() {
+	ms.WaitForDownloads()
+	ms.WaitForUploads()
 }

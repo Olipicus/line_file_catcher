@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -23,6 +24,13 @@ type Config struct {
 	// Logging configuration
 	LogDir string
 	Debug  bool
+
+	// Google Drive configuration
+	DriveEnabled     bool
+	DriveCredentials string
+	DriveTokenFile   string
+	DriveFolder      string
+	DriveRetryCount  int
 }
 
 // Load returns a Config struct populated with values from environment variables
@@ -31,12 +39,17 @@ func Load() *Config {
 	godotenv.Load()
 
 	config := &Config{
-		ChannelSecret: getEnv("LINE_CHANNEL_SECRET", ""),
-		ChannelToken:  getEnv("LINE_CHANNEL_TOKEN", ""),
-		Port:          getEnv("PORT", "8080"),
-		StorageDir:    getEnv("STORAGE_DIR", "./storage"),
-		LogDir:        getEnv("LOG_DIR", "./logs"),
-		Debug:         getEnv("DEBUG", "false") == "true",
+		ChannelSecret:    getEnv("LINE_CHANNEL_SECRET", ""),
+		ChannelToken:     getEnv("LINE_CHANNEL_TOKEN", ""),
+		Port:             getEnv("PORT", "8080"),
+		StorageDir:       getEnv("STORAGE_DIR", "./storage"),
+		LogDir:           getEnv("LOG_DIR", "./logs"),
+		Debug:            getEnv("DEBUG", "false") == "true",
+		DriveEnabled:     getEnv("DRIVE_ENABLED", "false") == "true",
+		DriveCredentials: getEnv("DRIVE_CREDENTIALS", "./credentials.json"),
+		DriveTokenFile:   getEnv("DRIVE_TOKEN_FILE", "./token.json"),
+		DriveFolder:      getEnv("DRIVE_FOLDER", "LineFileCatcher"),
+		DriveRetryCount:  getIntEnv("DRIVE_RETRY_COUNT", 3),
 	}
 
 	if config.ChannelSecret == "" || config.ChannelToken == "" {
@@ -63,6 +76,22 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// getIntEnv retrieves an environment variable as integer or returns a default value
+func getIntEnv(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	intValue := defaultValue
+	if _, err := fmt.Sscanf(value, "%d", &intValue); err != nil {
+		log.Printf("Warning: Invalid value for %s, using default: %d", key, defaultValue)
+		return defaultValue
+	}
+
+	return intValue
 }
 
 // GetMediaDir returns the path to the directory where media should be stored for a given date
