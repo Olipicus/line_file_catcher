@@ -114,6 +114,15 @@ func (h *WebhookHandler) handleMessageEvent(event *linebot.Event) error {
 
 	h.logger.Info("Media saved to: %s", filePath)
 
+	// Get user ID for sending follow-up messages
+	userID := event.Source.UserID
+
+	// Register a callback for when the file is uploaded to Google Drive
+	h.mediaStore.RegisterUploadCallback(filePath, func(filename string, fileLink string) error {
+		// Send a message with the Google Drive link
+		return h.sendDriveLinkMessage(userID, filename, fileLink)
+	})
+
 	// Optional: Send a confirmation message back to the user
 	if replyToken := event.ReplyToken; replyToken != "" {
 		if err := h.sendConfirmationMessage(replyToken, mediaType); err != nil {
@@ -157,5 +166,19 @@ func (h *WebhookHandler) sendConfirmationMessage(replyToken, mediaType string) e
 	}
 
 	h.logger.Debug("Confirmation message sent successfully")
+	return nil
+}
+
+// sendDriveLinkMessage sends a message with the Google Drive link back to the user
+func (h *WebhookHandler) sendDriveLinkMessage(replyToken, filename, fileLink string) error {
+	message := fmt.Sprintf("📁 Your file %s has been backed up to Google Drive and is available at: %s", filename, fileLink)
+
+	h.logger.Debug("Sending Google Drive link message for %s", filename)
+
+	if _, err := h.lineClient.GetBot().PushMessage(replyToken, linebot.NewTextMessage(message)).Do(); err != nil {
+		return fmt.Errorf("error sending Google Drive link message: %v", err)
+	}
+
+	h.logger.Info("Google Drive link message sent successfully")
 	return nil
 }

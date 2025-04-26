@@ -297,3 +297,30 @@ func (d *DriveService) GetBackupStats() map[string]interface{} {
 
 	return stats
 }
+
+// GetFileLink returns a shareable link for a file based on its ID
+func (d *DriveService) GetFileLink(fileID string) (string, error) {
+	// Check if file exists and get permissions
+	file, err := d.service.Files.Get(fileID).Fields("id", "name").Do()
+	if err != nil {
+		return "", fmt.Errorf("unable to get file info: %v", err)
+	}
+
+	// Create a permission for anyone to view the file
+	permission := &drive.Permission{
+		Type: "anyone",
+		Role: "reader",
+	}
+
+	// Apply the permission to the file
+	_, err = d.service.Permissions.Create(fileID, permission).Do()
+	if err != nil {
+		return "", fmt.Errorf("unable to share file: %v", err)
+	}
+
+	// Generate a direct link to the file
+	link := fmt.Sprintf("https://drive.google.com/file/d/%s/view", fileID)
+
+	d.logger.Info("Created shareable link for %s: %s", file.Name, link)
+	return link, nil
+}

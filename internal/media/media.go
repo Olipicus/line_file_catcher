@@ -16,6 +16,9 @@ import (
 	"github.com/line/line-bot-sdk-go/v7/linebot"
 )
 
+// FileUploadCallback is a function that is called when a file is uploaded to cloud storage
+type FileUploadCallback func(filename string, fileLink string) error
+
 // Stats tracks file processing statistics
 type Stats struct {
 	ImageCount int       `json:"imageCount"`
@@ -29,19 +32,22 @@ type Stats struct {
 
 // MediaStore handles the downloading and storing of media files
 type MediaStore struct {
-	config     *config.Config
-	logger     *utils.Logger
-	cloudStore common.CloudStorage
-	downloadWg sync.WaitGroup
-	uploadWg   sync.WaitGroup
-	stats      Stats
+	config          *config.Config
+	logger          *utils.Logger
+	cloudStore      common.CloudStorage
+	downloadWg      sync.WaitGroup
+	uploadWg        sync.WaitGroup
+	stats           Stats
+	uploadCallbacks map[string]FileUploadCallback // Map of file IDs to callbacks
+	callbackMu      sync.Mutex                    // Mutex for uploadCallbacks map
 }
 
 // NewMediaStore creates a new MediaStore instance
 func NewMediaStore(cfg *config.Config, logger *utils.Logger) *MediaStore {
 	ms := &MediaStore{
-		config: cfg,
-		logger: logger,
+		config:          cfg,
+		logger:          logger,
+		uploadCallbacks: make(map[string]FileUploadCallback),
 		stats: Stats{
 			StartTime: time.Now(),
 		},
@@ -140,6 +146,9 @@ func (ms *MediaStore) uploadToCloudAsync(filePath, folderPath string) {
 		}
 
 		ms.logger.Info("Successfully uploaded %s to cloud storage (ID: %s)", filePath, fileID)
+
+		// Call the registered callback function if exists
+		ms.callUploadCallback(fileID, filePath)
 	}()
 }
 
@@ -307,4 +316,52 @@ func (ms *MediaStore) WaitForUploads() {
 func (ms *MediaStore) WaitForAll() {
 	ms.WaitForDownloads()
 	ms.WaitForUploads()
+}
+
+// RegisterUploadCallback registers a callback function for when a file is uploaded to cloud storage
+// The callback will be called with the filename and the shareable link
+func (ms *MediaStore) RegisterUploadCallback(filePath string, callback FileUploadCallback) {
+	if ms.cloudStore == nil {
+		ms.logger.Warning("Cloud storage is disabled, not registering callback for %s", filePath)
+		return
+	}
+
+	ms.callbackMu.Lock()
+	defer ms.callbackMu.Unlock()
+
+	// Use the filename as the key since we don't have the fileID yet
+	ms.uploadCallbacks[filePath] = callback
+	ms.logger.Debug("Registered upload callback for %s", filePath)
+}
+
+// callUploadCallback calls the registered callback function for the given fileID
+func (ms *MediaStore) callUploadCallback(fileID string, filePath string) {
+	// Skip if no callback is registered
+	ms.callbackMu.Lock()
+	callback, exists := ms.uploadCallbacks[filePath]
+	if !exists {
+		ms.callbackMu.Unlock()
+		return
+	}
+
+	// Delete the callback to ensure it's only called once
+	delete(ms.uploadCallbacks, filePath)
+	ms.callbackMu.Unlock()
+
+	// Generate a shareable link
+	fileLink, err := ms.cloudStore.GetFileLink(fileID)
+	if err != nil {
+		ms.logger.Error("Failed to generate shareable link for file %s: %v", filePath, err)
+		return
+	}
+
+	ms.logger.Debug("Generated shareable link for %s: %s", filePath, fileLink)
+
+	// Call the callback function with the file name and link
+	filename := filepath.Base(filePath)
+	if err := callback(filename, fileLink); err != nil {
+		ms.logger.Error("Error in upload callback for %s: %v", filePath, err)
+	} else {
+		ms.logger.Info("Successfully executed upload callback for %s", filePath)
+	}
 }
